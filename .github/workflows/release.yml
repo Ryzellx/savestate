@@ -32,7 +32,7 @@ jobs:
       - run: cargo build --release
       - name: Package (Linux)
         if: runner.os == 'Linux'
-        run: tar -czf ${{ matrix.archive }} -C target/release savestate README.md LICENSE CHANGELOG.md
+        run: tar -czf ${{ matrix.archive }} -C target/release ${{ matrix.binary }} -C $GITHUB_WORKSPACE README.md LICENSE CHANGELOG.md
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: Compress-Archive -Path target/release/savestate.exe, README.md, LICENSE, CHANGELOG.md -DestinationPath ${{ matrix.archive }}
