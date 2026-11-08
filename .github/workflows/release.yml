@@ -5,9 +5,13 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
-  release:
+  build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -32,7 +36,26 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: Compress-Archive -Path target/release/savestate.exe, README.md, LICENSE, CHANGELOG.md -DestinationPath ${{ matrix.archive }}
-      - name: Upload release asset
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.archive }}
+          files: |
+            dist/savestate-linux-x86_64.tar.gz
+            dist/savestate-windows-x86_64.zip
