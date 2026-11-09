@@ -57,14 +57,14 @@ pub struct SaveStateApp {
     restore_target: String,
     restore_dry_run: bool,
     conflict_choice: ConflictChoice,
-    toast: Option<(String, ToastKind)>,
+    toast: Option<(String, ToastKind, std::time::Instant)>,
     scan_filter: String,
     new_game_id: String,
     new_game_name: String,
     new_save_path: String,
     wizard_step: usize,
     confirm_delete_snapshot: Option<String>,
-    page_anim: f32,
+    page_started: std::time::Instant,
 }
 
 impl SaveStateApp {
@@ -87,12 +87,35 @@ impl SaveStateApp {
             new_save_path: String::new(),
             wizard_step: 0,
             confirm_delete_snapshot: None,
-            page_anim: 0.0,
+            page_started: std::time::Instant::now(),
         }
     }
 
     fn set_toast(&mut self, text: impl Into<String>, kind: ToastKind) {
-        self.toast = Some((text.into(), kind));
+        self.toast = Some((text.into(), kind, std::time::Instant::now()));
+    }
+
+    /// Opacity of the current page's content: fades in over 180ms after a
+    /// page switch, instant with reduced motion.
+    fn page_fade(&self) -> f32 {
+        crate::animation::page_fade(
+            self.page_started.elapsed().as_secs_f32(),
+            0.18,
+            self.settings.reduced_motion,
+        )
+    }
+
+    fn nav_icon(page: Page) -> &'static str {
+        match page {
+            Page::Dashboard => "▦",
+            Page::Library => "▤",
+            Page::Details => "ℹ",
+            Page::Snapshots => "◈",
+            Page::Restore => "↺",
+            Page::Storage => "▣",
+            Page::Automation => "◷",
+            Page::Settings => "⚙",
+        }
     }
 
     fn games(&self) -> Vec<Game> {
@@ -168,31 +191,41 @@ impl SaveStateApp {
 
 impl eframe::App for SaveStateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let dt = ctx.input(|i| i.stable_dt).min(0.05);
-        let speed = if self.settings.reduced_motion {
-            100.0
-        } else {
-            8.0
-        };
-        self.page_anim += (1.0 - self.page_anim) * (dt * speed).min(1.0);
+        let p = ui::palette();
+        let reduced = self.settings.reduced_motion;
+        let sidebar_target = if self.sidebar_collapsed { 60.0 } else { 216.0 };
+        let sidebar_width =
+            crate::animation::animate_to(ctx, "sidebar-width", sidebar_target, 0.22, reduced);
+        let fade = self.page_fade();
 
         egui::SidePanel::left("sidebar")
             .resizable(false)
-            .exact_width(if self.sidebar_collapsed { 56.0 } else { 210.0 })
+            .exact_width(sidebar_width)
             .show(ctx, |ui| {
-                ui.add_space(12.0);
+                ui::paint_gradient_background(ui);
+                ui.add_space(14.0);
                 if self.sidebar_collapsed {
-                    ui.heading("SS");
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("SS")
+                                .font(ui::heading_font(20.0))
+                                .color(p.accent),
+                        );
+                    });
                 } else {
-                    ui.heading("SaveState");
-                    ui.label("Game saves, backed up and restorable.");
+                    ui.label(egui::RichText::new("SaveState").font(ui::heading_font(22.0)));
+                    ui.label(
+                        egui::RichText::new("Game saves, backed up and restorable.")
+                            .small()
+                            .color(p.text_dim),
+                    );
                 }
-                ui.add_space(8.0);
+                ui.add_space(10.0);
                 if ui
                     .button(if self.sidebar_collapsed {
-                        ">"
+                        "›"
                     } else {
-                        "< Collapse"
+                        "‹ Collapse"
                     })
                     .clicked()
                 {
@@ -200,52 +233,94 @@ impl eframe::App for SaveStateApp {
                 }
                 ui.add_space(12.0);
                 ui.separator();
+                ui.add_space(6.0);
                 for page in PAGES {
-                    let label = if self.sidebar_collapsed {
-                        page.label().chars().next().unwrap_or('?').to_string()
-                    } else {
-                        page.label().to_string()
-                    };
-                    if ui
-                        .add(
-                            egui::Button::new(label)
-                                .selected(self.page == page)
-                                .min_size(egui::vec2(0.0, 32.0)),
-                        )
-                        .clicked()
+                    if ui::nav_button(
+                        ui,
+                        Self::nav_icon(page),
+                        page.label(),
+                        self.page == page,
+                        self.sidebar_collapsed,
+                    )
+                    .clicked()
                     {
                         self.page = page;
-                        self.page_anim = 0.0;
+                        self.page_started = std::time::Instant::now();
                     }
+                    ui.add_space(2.0);
                 }
                 ui.add_space(16.0);
                 ui.separator();
+                ui.add_space(8.0);
                 if ui.button("Scan for games").clicked() {
                     self.do_scan();
                 }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.add_space(8.0);
-                match self.page {
-                    Page::Dashboard => self.show_dashboard(ui),
-                    Page::Library => self.show_library(ui),
-                    Page::Details => self.show_details(ui),
-                    Page::Snapshots => self.show_snapshots(ui),
-                    Page::Restore => self.show_restore(ui),
-                    Page::Storage => self.show_storage(ui),
-                    Page::Automation => self.show_automation(ui),
-                    Page::Settings => self.show_settings(ui),
-                }
+            ui::paint_gradient_background(ui);
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("SaveState").font(ui::heading_font(16.0)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.monospace(format!("v{}", env!("CARGO_PKG_VERSION")));
+                });
             });
-            if let Some((text, kind)) = &self.toast {
-                ui::toast(ui, text, *kind);
-            }
+            ui.add_space(4.0);
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.scope(|ui| {
+                    ui.set_opacity(fade);
+                    ui.add_space(8.0);
+                    match self.page {
+                        Page::Dashboard => self.show_dashboard(ui),
+                        Page::Library => self.show_library(ui),
+                        Page::Details => self.show_details(ui),
+                        Page::Snapshots => self.show_snapshots(ui),
+                        Page::Restore => self.show_restore(ui),
+                        Page::Storage => self.show_storage(ui),
+                        Page::Automation => self.show_automation(ui),
+                        Page::Settings => self.show_settings(ui),
+                    }
+                });
+            });
         });
 
-        if !self.settings.reduced_motion {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        // Animated toast, bottom-right: slides in, fades out after 4s.
+        if let Some((text, kind, since)) = &self.toast {
+            let age = since.elapsed().as_secs_f32();
+            if age > 4.0 {
+                self.toast = None;
+            } else {
+                let alpha = if age < 0.2 {
+                    crate::animation::ease_out_cubic(age / 0.2)
+                } else if age > 3.5 {
+                    1.0 - (age - 3.5) / 0.5
+                } else {
+                    1.0
+                };
+                let slide = if reduced {
+                    0.0
+                } else {
+                    (1.0 - crate::animation::ease_out_cubic(age / 0.25)) * 20.0
+                };
+                let text = text.clone();
+                let kind = *kind;
+                egui::Area::new("toast".into())
+                    .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0 + slide))
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        ui.set_opacity(alpha.clamp(0.0, 1.0));
+                        ui::toast(ui, &text, kind);
+                    });
+            }
+        }
+
+        // Repaint only while something is still moving.
+        let sidebar_moving = (sidebar_width - sidebar_target).abs() > 0.5;
+        let animating = sidebar_moving || fade < 1.0 || self.toast.is_some();
+        if animating {
+            ctx.request_repaint();
         }
     }
 }
@@ -270,16 +345,14 @@ impl SaveStateApp {
             .ok()
             .and_then(|s| s.into_iter().next());
         ui.horizontal(|ui| {
-            ui.label(format!("Games: {}", stats.game_count));
-            ui.label(format!("Snapshots: {}", stats.snapshot_count));
-            ui.label(format!(
-                "Storage used: {}",
-                format_bytes(stats.stored_bytes)
-            ));
-            ui.label(format!(
-                "Dedup + compression saved: {}",
-                format_bytes(stats.logical_bytes.saturating_sub(stats.stored_bytes))
-            ));
+            ui::stat_card(ui, "Games", &stats.game_count.to_string());
+            ui::stat_card(ui, "Snapshots", &stats.snapshot_count.to_string());
+            ui::stat_card(ui, "Storage used", &format_bytes(stats.stored_bytes));
+            ui::stat_card(
+                ui,
+                "Dedup + compression saved",
+                &format_bytes(stats.logical_bytes.saturating_sub(stats.stored_bytes)),
+            );
         });
         ui.add_space(8.0);
         match last_backup {
@@ -295,24 +368,46 @@ impl SaveStateApp {
             }
         }
         ui.add_space(16.0);
-        ui.heading("Your games");
+        ui.label(egui::RichText::new("Your games").font(ui::heading_font(18.0)));
+        ui.add_space(6.0);
         if games.is_empty() {
             ui.label("No games detected yet. Press Scan for games in the sidebar.");
         }
-        for game in games.iter().take(8) {
+        let fade = self.page_fade();
+        for (i, game) in games.iter().take(8).enumerate() {
             let snaps = self
                 .store
                 .list_snapshots(&game.id)
                 .map(|s| s.len())
                 .unwrap_or(0);
-            ui.horizontal(|ui| {
-                ui.label(format!("{} [{}]", game.name, game.launcher));
-                ui.label(format!("{} snapshot(s)", snaps));
-                let id = game.id.clone();
-                if ui.button("Back up").clicked() {
-                    self.do_backup(&id);
-                }
+            let alpha =
+                crate::animation::ease_out_cubic((fade * 1.4 - i as f32 * 0.08).clamp(0.0, 1.0));
+            let p = ui::palette();
+            ui.scope(|ui| {
+                ui.set_opacity(alpha);
+                ui::card_frame(&p).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new(&game.name).font(ui::heading_font(16.0)));
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} · {} snapshot(s)",
+                                    game.launcher, snaps
+                                ))
+                                .small()
+                                .color(p.text_dim),
+                            );
+                        });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let id = game.id.clone();
+                            if ui::primary_button(ui, "Back up").clicked() {
+                                self.do_backup(&id);
+                            }
+                        });
+                    });
+                });
             });
+            ui.add_space(8.0);
         }
     }
 
@@ -473,18 +568,19 @@ impl SaveStateApp {
             ui.label("No snapshots for this game yet. Back it up from Game Details.");
             return;
         }
-        for snap in &snaps {
+        let fade = self.page_fade();
+        for (i, snap) in snaps.iter().enumerate() {
             let p = ui::palette();
-            egui::Frame::new()
-                .fill(p.panel_alt)
-                .stroke(egui::Stroke::new(1.0f32, p.border))
-                .corner_radius(6)
-                .inner_margin(egui::Margin::symmetric(10, 8))
-                .show(ui, |ui| {
+            let alpha =
+                crate::animation::ease_out_cubic((fade * 1.4 - i as f32 * 0.08).clamp(0.0, 1.0));
+            ui.scope(|ui| {
+                ui.set_opacity(alpha);
+                ui::card_frame(&p).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(format!("{}  {}", snap.name, format_time(snap.created_at)));
+                        ui.monospace(&snap.name);
+                        ui.label(format_time(snap.created_at));
                         if snap.verified {
-                            ui.colored_label(p.accent, "Verified");
+                            ui.colored_label(p.accent, "● Verified");
                         } else {
                             ui.colored_label(p.danger, "Not verified");
                         }
@@ -496,6 +592,7 @@ impl SaveStateApp {
                             ));
                         });
                     });
+                    ui.add_space(4.0);
                     ui.label(&snap.description);
                     ui.horizontal(|ui| {
                         let snap_id = snap.id.clone();
@@ -514,7 +611,7 @@ impl SaveStateApp {
                                 Err(e) => self.set_toast(e, ToastKind::Error),
                             }
                         }
-                        if ui.button("Restore this").clicked() {
+                        if ui::primary_button(ui, "Restore this").clicked() {
                             self.selected_snapshot = Some(snap_id.clone());
                             self.page = Page::Restore;
                             self.wizard_step = 0;
@@ -555,7 +652,8 @@ impl SaveStateApp {
                         }
                     });
                 });
-            ui.add_space(6.0);
+            });
+            ui.add_space(8.0);
         }
         if snaps.len() >= 2 {
             ui.add_space(8.0);
@@ -580,16 +678,31 @@ impl SaveStateApp {
     fn show_restore(&mut self, ui: &mut egui::Ui) {
         ui::section_title(ui, "Restore Wizard");
         let steps = ["Choose snapshot", "Check target", "Preview and confirm"];
+        let p = ui::palette();
         ui.horizontal(|ui| {
             for (i, step) in steps.iter().enumerate() {
-                let label = if i == self.wizard_step {
-                    format!("> {}", step)
+                let done = i < self.wizard_step;
+                let current = i == self.wizard_step;
+                let marker = if done {
+                    "✓".to_string()
                 } else {
-                    step.to_string()
+                    format!("{}", i + 1)
                 };
-                ui.label(label);
+                ui.colored_label(
+                    if current || done {
+                        p.accent
+                    } else {
+                        p.text_dim
+                    },
+                    marker,
+                );
+                ui.label(if current {
+                    egui::RichText::new(*step).color(p.accent)
+                } else {
+                    egui::RichText::new(*step).color(p.text_dim)
+                });
                 if i + 1 < steps.len() {
-                    ui.label("/");
+                    ui.colored_label(p.text_dim, "─");
                 }
             }
         });

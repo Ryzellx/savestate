@@ -64,7 +64,7 @@
 
 | From a release | From source |
 |---|---|
-| Download the archive for your platform from the [latest release](https://github.com/Ryzellx/savestate/releases/latest) and run the binary. | Requires a stable Rust toolchain (1.85+) and, on Linux, X11/GL dev libraries (`libxcb`, `libxkbcommon`, `libGL`). |
+| Download the archive for your platform from the [latest release](https://github.com/Ryzellx/savestate/releases/latest) and run the binary. On Windows, double-clicking the exe opens just the app window (no console window); running it from a terminal with a command still prints output. | Requires a stable Rust toolchain (1.85+) and, on Linux, X11/GL dev libraries (`libxcb`, `libxkbcommon`, `libGL`). |
 
 </div>
 

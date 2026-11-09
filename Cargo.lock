@@ -2812,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "savestate"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
  "chrono",
@@ -2829,6 +2829,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "walkdir",
+ "windows 0.61.3",
  "zstd",
 ]
 

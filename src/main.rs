@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
+
 use clap::Parser;
 use savestate::app::SaveStateApp;
 use savestate::cli::{run, Cli};
@@ -6,6 +11,13 @@ use savestate::storage::Store;
 use std::sync::Arc;
 
 fn main() {
+    // Release GUI builds on Windows run without a console window. When the
+    // user does pass a command, re-attach to the terminal that launched us
+    // so CLI output is still visible.
+    #[cfg(windows)]
+    if std::env::args().len() > 1 {
+        savestate::platform::attach_parent_console();
+    }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();

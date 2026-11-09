@@ -23,15 +23,23 @@ in a dark premium gaming-utility style, dials ENERGY 2 / RHYTHM 2 / MOTION 2.
   `#2A3038`. Danger red `#E05A4E` is reserved for destructive actions
   and failed verification only.
 
-No purple-blue gradients anywhere (R-01). No glow, no glassmorphism, no
-background grid. Flat surfaces, one accent, generous spacing.
+A subtle dark vertical gradient runs behind the sidebar and the main
+area (near-black top fading slightly darker toward the bottom, with a
+faint amber tint along the very top edge). It is the only gradient in
+the app: no purple-blue gradients anywhere (R-01), no glow, no
+glassmorphism, no background grid. Cards are rounded (12px) with a
+1px border and a soft shadow, so surfaces read as lifted, not flat.
 
 ## Typography (R-06)
 
-- egui default proportional font for body and headings. Reason: a utility
-  is read in short bursts; legibility at small sizes matters more than a
-  display face.
-- Monospace only for hashes, snapshot IDs, and paths, never for headings.
+- Headings: Space Grotesk Bold, embedded from `assets/fonts/`. Reason:
+  the app's display face; it reads as a designed product instead of a
+  default egui demo, while staying neutral and legible.
+- Body: Inter Regular (15px), with Inter Medium available for emphasis.
+  Reason: a utility is read in short bursts; legibility at small sizes
+  matters more than a display face.
+- Monospace: JetBrains Mono (13px) for hashes, snapshot IDs, and paths,
+  never for headings.
 
 ## Layout (R-05, C-3)
 
@@ -51,9 +59,13 @@ background grid. Flat surfaces, one accent, generous spacing.
 
 ## Motion (R-19)
 
-- Page switch fades in over ~120ms. Purpose: orientation after
-  navigation, nothing more. No endless pulses or loops. Reduced-motion
-  setting disables the fade. No repaint when idle.
+- Page switch fades in over ~180ms; cards on the new page stagger in
+  behind it. Sidebar collapse animates its width over ~220ms instead of
+  snapping. Toasts slide in from the bottom-right and fade out after 4s.
+  Purpose: orientation after navigation and confirmation of actions,
+  nothing more. No endless pulses or loops. Reduced-motion setting makes
+  every transition instant. No repaint when idle: the app requests a
+  repaint only while an animation is in progress.
 
 ## Copy (R-02, R-16)
 
@@ -65,7 +77,8 @@ background grid. Flat surfaces, one accent, generous spacing.
 
 ## Icons
 
-- Text labels only in this release; no icon set is imported. Reason: the
-  sidebar has eight short labels that read faster as words, and a generic
-  icon font would add a recognizable library look without adding meaning
-  (R-04).
+- Each sidebar item has one small text glyph next to its label
+  (Dashboard ▦, Game Library ▤, Game Details ℹ, Snapshots ◈, Restore ↺,
+  Storage ▣, Automation ◷, Settings ⚙). Reason: the glyphs mark each
+  destination at a glance; they render from the bundled egui fallback
+  fonts, so no icon set is imported (R-04). No emoji.
